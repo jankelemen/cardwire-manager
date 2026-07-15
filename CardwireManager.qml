@@ -36,8 +36,8 @@ PluginComponent {
     }
 
     function barModeText() {
-        if (root.abbreviateModeNames && root.activeModeName.length > 0)
-            return root.activeModeName.charAt(0).toUpperCase();
+        if (root.abbreviateModeNames)
+            return root.activeModeName.length > 0 ? root.activeModeName.charAt(0).toUpperCase() : "NM";
 
         return root.currentModeLabel();
     }

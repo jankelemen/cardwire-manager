@@ -29,12 +29,12 @@ Singleton {
             const availableModeNames = root._parseAvailableModeNames(stdout);
             if (modeName.length === 0) {
                 root.refreshing = false;
-                root.lastError = "Cannot read mode. Ensure cardwired.service is running.";
+                root.lastError = "Ensure cardwired.service is running.";
                 return ;
             }
             if (availableModeNames.length === 0) {
                 root.refreshing = false;
-                root.lastError = "Cannot read modes. Ensure cardwired.service is running.";
+                root.lastError = "Ensure cardwired.service is running.";
                 return ;
             }
             root.modes = availableModeNames.map((availableModeName) => {

@@ -1,0 +1,17 @@
+{
+    "$schema": "https://raw.githubusercontent.com/AvengeMedia/DankMaterialShell/master/quickshell/PLUGINS/plugin-schema.json",
+    "id": "cardwireManager",
+    "name": "Cardwire Manager",
+    "description": "DankBar widget for selecting Cardwire GPU modes and showing the currently active mode.",
+    "version": "0.1.0",
+    "license": "MIT",
+    "author": "Jan Kelemen",
+    "icon": "memory",
+    "type": "widget",
+    "capabilities": ["dankbar-widget"],
+    "component": "./CardwireManager.qml",
+    "settings": "./CardwireManagerSettings.qml",
+    "requires_dms": ">=1.5.0",
+    "requires": ["cardwire"],
+    "permissions": ["process", "settings_read", "settings_write"]
+}

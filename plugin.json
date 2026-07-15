@@ -3,7 +3,7 @@
     "id": "cardwireManager",
     "name": "Cardwire Manager",
     "description": "DankBar widget for selecting Cardwire GPU modes and showing the currently active mode.",
-    "version": "0.1.0",
+    "version": "0.1.2",
     "license": "MIT",
     "author": "Jan Kelemen",
     "icon": "memory",

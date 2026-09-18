@@ -13,21 +13,10 @@ PluginComponent {
     readonly property var modes: CardwireService.modes
     readonly property string activeModeName: CardwireService.activeModeName
 
-    function selectMode(mode) {
-        if (mode.name === root.activeModeName || CardwireService.applying)
-            return ;
-
-        CardwireService.setMode(mode.name, (success) => {
-            if (success)
-                postClickRefresh.restart();
-
-        });
-    }
-
     function cycleMode() {
         const mode = CardwireService.nextMode();
         if (mode)
-            root.selectMode(mode);
+            CardwireService.setMode(mode.name);
 
     }
 
@@ -48,23 +37,8 @@ PluginComponent {
     }
     popoutWidth: 420
     popoutHeight: Math.max(236, Math.min(476, 172 + root.modes.length * 64))
-    Component.onCompleted: CardwireService.refreshModeState()
-
-    Timer {
-        interval: root.pollIntervalSeconds * 1000
-        running: root.pollingEnabled
-        repeat: true
-        triggeredOnStart: false
-        onTriggered: CardwireService.refreshModeState()
-    }
-
-    Timer {
-        id: postClickRefresh
-
-        interval: 400
-        repeat: false
-        onTriggered: CardwireService.refreshModeState()
-    }
+    Component.onCompleted: CardwireService.registerWidget(root)
+    Component.onDestruction: CardwireService.unregisterWidget(root)
 
     horizontalBarPill: Component {
         Row {
@@ -274,8 +248,8 @@ PluginComponent {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            enabled: !CardwireService.refreshing && !CardwireService.applying
-                            onClicked: root.selectMode(modeRow.modelData)
+                            enabled: !CardwireService.busy
+                            onClicked: CardwireService.setMode(modeRow.modelData.name)
                         }
 
                     }

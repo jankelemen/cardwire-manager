@@ -21,7 +21,7 @@ cardwire set <mode>
 - Marks the active mode with a check indicator.
 - Switches modes from the popout.
 - Cycles to the next mode from the pill right-click action.
-- Polls Cardwire state every 15 seconds by default.
+- Polls Cardwire state every 15 seconds by default, using one shared timer across bars.
 - Exposes the polling interval as a settings slider. Polling can also be disabled.
 
 ## Install
@@ -49,3 +49,11 @@ There is no build toolchain. DMS loads the QML at runtime.
 ```sh
 dms ipc call plugins reload cardwireManager
 ```
+
+Run the service regression tests with Node.js:
+
+```sh
+node tests/service.test.mjs
+```
+
+The tests simulate command responses and timing without changing GPU modes.

@@ -14,53 +14,77 @@ Singleton {
     property bool refreshing: false
     property bool applying: false
 
-    function refreshModeState() {
-        if (root.refreshing)
-            return ;
+    readonly property bool busy: refreshing || applying
+    property bool _refreshPending: false
+    property var _widgets: []
+    readonly property var _pollingWidgets: _widgets.filter(widget => widget.pollingEnabled)
 
-        root.refreshing = true;
-        Proc.runCommand("cardwireService.get", ["cardwire", "get"], (stdout, exitCode) => {
-            if (exitCode !== 0) {
-                root.refreshing = false;
-                root.lastError = stdout && stdout.length > 0 ? stdout.trim() : "cardwire get exited " + exitCode;
-                return ;
-            }
-            const modeName = root._parseCurrentModeName(stdout);
-            const availableModeNames = root._parseAvailableModeNames(stdout);
-            if (modeName.length === 0) {
-                root.refreshing = false;
-                root.lastError = "Ensure cardwired.service is running.";
-                return ;
-            }
-            if (availableModeNames.length === 0) {
-                root.refreshing = false;
-                root.lastError = "Ensure cardwired.service is running.";
-                return ;
-            }
-            root.modes = availableModeNames.map((availableModeName) => {
-                return root._createModeData(availableModeName);
-            });
-            root.activeModeName = modeName;
-            root.refreshing = false;
-            root.lastError = "";
-            root.lastRefreshText = Qt.formatDateTime(new Date(), "HH:mm:ss");
-        }, 50, 5000);
+    function registerWidget(widget) {
+        root._widgets = root._widgets.concat([widget]);
+        if (root._widgets.length === 1)
+            root.refreshModeState();
     }
 
-    function setMode(modeName, onDone) {
+    function unregisterWidget(widget) {
+        root._widgets = root._widgets.filter(candidate => candidate !== widget);
+    }
+
+    function refreshModeState() {
+        if (root.busy) {
+            root._refreshPending = true;
+            return;
+        }
+        root._refreshPending = false;
+        root.refreshing = true;
+        root._runCommand("get", [], (stdout, exitCode) => {
+            if (exitCode !== 0) {
+                root.lastError = stdout.trim() || "cardwire get exited " + exitCode;
+            } else {
+                const modeName = root._parseCurrentModeName(stdout);
+                const availableModeNames = root._parseAvailableModeNames(stdout);
+                if (!modeName || availableModeNames.length === 0) {
+                    root.lastError = "Unrecognized cardwire get output";
+                } else {
+                    root.modes = availableModeNames.map(mode => root._createModeData(mode));
+                    root.activeModeName = modeName;
+                    root.lastError = "";
+                    root.lastRefreshText = Qt.formatDateTime(new Date(), "HH:mm:ss");
+                }
+            }
+            root.refreshing = false;
+            if (root._refreshPending)
+                Qt.callLater(root.refreshModeState);
+        }, 5000);
+    }
+
+    function setMode(modeName) {
+        if (root.busy || modeName === root.activeModeName)
+            return;
+        if (!modeName) {
+            root.lastError = "Mode name is empty.";
+            ToastService.showError("Cardwire mode switch failed", root.lastError);
+            return;
+        }
+        postApplyRefresh.stop();
         root.applying = true;
-        Proc.runCommand("cardwireService.set", ["cardwire", "set", modeName], (stdout, exitCode) => {
+        root._runCommand("set", [modeName], (stdout, exitCode) => {
             root.applying = false;
             if (exitCode !== 0) {
-                root.lastError = stdout && stdout.length > 0 ? stdout.trim() : "cardwire set " + modeName + " exited " + exitCode;
+                root._refreshPending = false;
+                root.lastError = stdout.trim() || "cardwire set " + modeName + " exited " + exitCode;
                 ToastService.showError("Cardwire mode switch failed", root.lastError);
-                onDone(false);
-                return ;
+                return;
             }
             root.activeModeName = modeName;
             root.lastError = "";
-            onDone(true);
-        }, 50, 15000);
+            postApplyRefresh.restart();
+        }, 15000);
+    }
+
+    function _runCommand(action, args, callback, timeoutMs) {
+        // Keep arguments separate from shell code while collecting stderr as well as stdout.
+        const command = ["sh", "-c", 'exec "$@" 2>&1', "cardwireManager", "cardwire", action].concat(args);
+        Proc.runCommand("cardwireService." + action, command, callback, 50, timeoutMs);
     }
 
     function nextMode() {
@@ -99,7 +123,7 @@ Singleton {
     }
 
     function _parseCurrentModeName(stdout) {
-        const match = stdout.match(/Current Mode:\s*([^\r\n]+)/i);
+        const match = stdout.match(/^Current Mode:[ \t]*([^\r\n]+)$/im);
         if (!match)
             return "";
 
@@ -107,7 +131,7 @@ Singleton {
     }
 
     function _parseAvailableModeNames(stdout) {
-        const match = stdout.match(/Available Modes?:\s*([^\r\n]+)/i);
+        const match = stdout.match(/^Available Modes?:[ \t]*([^\r\n]+)$/im);
         if (!match)
             return [];
 
@@ -116,6 +140,20 @@ Singleton {
         }).filter((modeName) => {
             return modeName.length > 0;
         });
+    }
+
+    Timer {
+        interval: root._pollingWidgets.length > 0 ? Math.min.apply(Math, root._pollingWidgets.map(widget => widget.pollIntervalSeconds)) * 1000 : 15000
+        running: root._pollingWidgets.length > 0
+        repeat: true
+        onTriggered: root.refreshModeState()
+    }
+
+    Timer {
+        id: postApplyRefresh
+
+        interval: 400
+        onTriggered: root.refreshModeState()
     }
 
 }

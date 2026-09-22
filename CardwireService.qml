@@ -13,20 +13,30 @@ Singleton {
     property string lastRefreshText: ""
     property bool refreshing: false
     property bool applying: false
+    property bool startupLoading: false
 
     readonly property bool busy: refreshing || applying
     property bool _refreshPending: false
     property var _widgets: []
     readonly property var _pollingWidgets: _widgets.filter(widget => widget.pollingEnabled)
+    readonly property var _startupRetryDelays: [2000, 5000, 10000]
+    property int _startupRetryIndex: 0
 
     function registerWidget(widget) {
         root._widgets = root._widgets.concat([widget]);
-        if (root._widgets.length === 1)
+        if (root._widgets.length === 1) {
+            root.startupLoading = root.activeModeName.length === 0;
+            root._startupRetryIndex = 0;
             root.refreshModeState();
+        }
     }
 
     function unregisterWidget(widget) {
         root._widgets = root._widgets.filter(candidate => candidate !== widget);
+        if (root._widgets.length === 0) {
+            startupRetry.stop();
+            root.startupLoading = false;
+        }
     }
 
     function refreshModeState() {
@@ -34,6 +44,7 @@ Singleton {
             root._refreshPending = true;
             return;
         }
+        startupRetry.stop();
         root._refreshPending = false;
         root.refreshing = true;
         root._runCommand("get", [], (stdout, exitCode) => {
@@ -52,6 +63,14 @@ Singleton {
                 }
             }
             root.refreshing = false;
+            if (root.startupLoading) {
+                if (!root.lastError || root._startupRetryIndex === root._startupRetryDelays.length) {
+                    root.startupLoading = false;
+                } else {
+                    startupRetry.interval = root._startupRetryDelays[root._startupRetryIndex];
+                    startupRetry.start();
+                }
+            }
             if (root._refreshPending)
                 Qt.callLater(root.refreshModeState);
         }, 5000);
@@ -144,9 +163,18 @@ Singleton {
 
     Timer {
         interval: root._pollingWidgets.length > 0 ? Math.min.apply(Math, root._pollingWidgets.map(widget => widget.pollIntervalSeconds)) * 1000 : 15000
-        running: root._pollingWidgets.length > 0
+        running: root._pollingWidgets.length > 0 && !root.startupLoading
         repeat: true
         onTriggered: root.refreshModeState()
+    }
+
+    Timer {
+        id: startupRetry
+
+        onTriggered: {
+            root._startupRetryIndex += 1;
+            root.refreshModeState();
+        }
     }
 
     Timer {

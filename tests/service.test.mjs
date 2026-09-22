@@ -6,19 +6,22 @@ import vm from 'node:vm';
 
 const serviceSource = readFileSync(new URL('../CardwireService.qml', import.meta.url), 'utf8');
 
-function createService() {
+function createService(initialState = {}) {
     const requests = [];
     const deferred = [];
     const errors = [];
     const postApplyRefresh = { running: false, restart() { this.running = true; }, stop() { this.running = false; } };
+    const startupRetry = { running: false, interval: 0, start() { this.running = true; }, stop() { this.running = false; } };
     const root = {
         modes: [{ name: 'integrated' }, { name: 'hybrid' }, { name: 'smart' }],
         activeModeName: 'integrated', lastError: '', lastRefreshText: '',
         refreshing: false, applying: false, _refreshPending: false, _widgets: [],
+        startupLoading: false, _startupRetryIndex: 0, _startupRetryDelays: [2000, 5000, 10000],
+        ...initialState,
         get busy() { return this.refreshing || this.applying; }
     };
     const context = {
-        root, postApplyRefresh,
+        root, postApplyRefresh, startupRetry,
         Proc: { runCommand(id, command, callback, debounceMs, timeoutMs) { requests.push({ id, command, callback, timeoutMs }); } },
         Qt: { formatDateTime() { return '12:00:00'; }, callLater(callback) { if (!deferred.includes(callback)) deferred.push(callback); } },
         ToastService: { showError(title, message) { errors.push({ title, message }); } }
@@ -29,7 +32,13 @@ function createService() {
         if (typeof value === 'function') root[name] = value;
     }
     return {
-        root, requests, errors, postApplyRefresh,
+        root, requests, errors, postApplyRefresh, startupRetry,
+        triggerStartupRetry() {
+            assert.equal(startupRetry.running, true);
+            startupRetry.stop();
+            const handler = serviceSource.match(/id: startupRetry[\s\S]*?onTriggered: \{([\s\S]*?)^        }/m)[1];
+            vm.runInContext(handler, context);
+        },
         respond(stdout, exitCode = 0) {
             const request = requests.shift();
             assert.ok(request, 'expected a pending command');
@@ -193,4 +202,121 @@ test('command wrapper captures stderr without interpreting arguments as shell co
     assert.equal(result.status, 7);
     assert.equal(result.stdout, modeName);
     assert.equal(result.stderr, '');
+});
+
+function startWithoutMode() {
+    const s = createService({ modes: [], activeModeName: '' });
+    const widget = { pollingEnabled: false, pollIntervalSeconds: 15 };
+    s.root.registerWidget(widget);
+    return { ...s, widget };
+}
+
+test('startup retries three times with polling disabled, then exposes the last error', () => {
+    const s = startWithoutMode();
+    assert.equal(s.root.startupLoading, true);
+    assert.equal(s.requests.length, 1);
+    s.respond('daemon starting', 1);
+    for (const delay of [2000, 5000, 10000]) {
+        assert.equal(s.startupRetry.interval, delay);
+        assert.equal(s.root.startupLoading, true);
+        s.triggerStartupRetry();
+        assert.equal(s.requests.length, 1);
+        s.respond('daemon unavailable', 1);
+    }
+    assert.equal(s.root.startupLoading, false);
+    assert.equal(s.startupRetry.running, false);
+    assert.equal(s.root.activeModeName, '');
+    assert.equal(s.root.lastError, 'daemon unavailable');
+    s.flush();
+    assert.equal(s.requests.length, 0);
+});
+
+test('a valid mode on any startup attempt cancels further retries', () => {
+    for (let failures = 0; failures <= 3; failures++) {
+        const s = startWithoutMode();
+        for (let i = 0; i < failures; i++) {
+            s.respond('daemon starting', 1);
+            s.triggerStartupRetry();
+        }
+        s.respond(state('Integrated'));
+        assert.equal(s.root.startupLoading, false);
+        assert.equal(s.startupRetry.running, false);
+        assert.equal(s.root.activeModeName, 'integrated');
+        assert.equal(s.root.lastError, '');
+        assert.equal(s.requests.length, 0);
+    }
+});
+
+test('startup also retries malformed output and timeouts', () => {
+    const s = startWithoutMode();
+    s.respond('daemon not ready');
+    assert.equal(s.root.startupLoading, true);
+    s.triggerStartupRetry();
+    s.respond('', 124);
+    assert.equal(s.root.startupLoading, true);
+    assert.equal(s.startupRetry.interval, 5000);
+    s.triggerStartupRetry();
+    s.respond(state('Hybrid'));
+    assert.equal(s.root.startupLoading, false);
+    assert.equal(s.root.activeModeName, 'hybrid');
+});
+
+test('additional widgets share the current startup retry budget', () => {
+    const s = startWithoutMode();
+    s.respond('daemon starting', 1);
+    s.triggerStartupRetry();
+    s.respond('daemon starting', 1);
+    s.root.registerWidget({ pollingEnabled: false, pollIntervalSeconds: 15 });
+    assert.equal(s.requests.length, 0);
+    assert.equal(s.root._startupRetryIndex, 1);
+    assert.equal(s.startupRetry.interval, 5000);
+});
+
+test('manual recovery cancels a scheduled retry without waiting for it', () => {
+    const s = startWithoutMode();
+    s.respond('daemon starting', 1);
+    s.root.refreshModeState();
+    assert.equal(s.startupRetry.running, false);
+    s.respond(state('Smart'));
+    assert.equal(s.root.startupLoading, false);
+    assert.equal(s.startupRetry.running, false);
+    assert.equal(s.root.activeModeName, 'smart');
+});
+
+test('removing the final widget stops retries, including after an in-flight failure', () => {
+    for (const inFlight of [true, false]) {
+        const s = startWithoutMode();
+        if (!inFlight) s.respond('daemon starting', 1);
+        s.root.unregisterWidget(s.widget);
+        if (inFlight) s.respond('daemon starting', 1);
+        assert.equal(s.root.startupLoading, false);
+        assert.equal(s.startupRetry.running, false);
+        assert.equal(s.requests.length, 0);
+    }
+});
+
+test('later refresh errors do not restart the startup sequence', () => {
+    const s = startWithoutMode();
+    s.respond(state('Integrated'));
+    s.root.refreshModeState();
+    s.respond('daemon stopped', 1);
+    assert.equal(s.root.startupLoading, false);
+    assert.equal(s.startupRetry.running, false);
+    assert.equal(s.root.lastError, 'daemon stopped');
+});
+
+test('bar keeps NM for an unknown mode regardless of abbreviation setting', () => {
+    const source = readFileSync(new URL('../CardwireManager.qml', import.meta.url), 'utf8');
+    const root = { activeModeName: '', abbreviateModeNames: false };
+    const context = { root, CardwireService: { modeLabel: name => name ? 'Integrated' : 'No mode' } };
+    vm.createContext(context);
+    vm.runInContext(source.match(/^    function [\s\S]*?^    }/gm).join('\n'), context);
+    root.currentModeLabel = context.currentModeLabel;
+    assert.equal(context.barModeText(), 'NM');
+    root.abbreviateModeNames = true;
+    assert.equal(context.barModeText(), 'NM');
+    root.activeModeName = 'integrated';
+    assert.equal(context.barModeText(), 'I');
+    root.abbreviateModeNames = false;
+    assert.equal(context.barModeText(), 'Integrated');
 });

@@ -12,6 +12,7 @@ PluginComponent {
     readonly property bool abbreviateModeNames: pluginData ? pluginData.abbreviateModeNames === true : false
     readonly property var modes: CardwireService.modes
     readonly property string activeModeName: CardwireService.activeModeName
+    readonly property bool showError: !CardwireService.startupLoading && CardwireService.lastError.length > 0
 
     function cycleMode() {
         const mode = CardwireService.nextMode();
@@ -25,8 +26,10 @@ PluginComponent {
     }
 
     function barModeText() {
+        if (root.activeModeName.length === 0)
+            return "NM";
         if (root.abbreviateModeNames)
-            return root.activeModeName.length > 0 ? root.activeModeName.charAt(0).toUpperCase() : "NM";
+            return root.activeModeName.charAt(0).toUpperCase();
 
         return root.currentModeLabel();
     }
@@ -46,15 +49,15 @@ PluginComponent {
             anchors.verticalCenter: parent.verticalCenter
 
             DankIcon {
-                name: CardwireService.lastError.length > 0 ? "warning" : "memory"
-                color: CardwireService.lastError.length > 0 ? Theme.error : Theme.surfaceText
+                name: root.showError ? "warning" : "memory"
+                color: root.showError ? Theme.error : Theme.surfaceText
                 size: Theme.iconSize - 6
                 anchors.verticalCenter: parent.verticalCenter
             }
 
             StyledText {
                 text: root.barModeText()
-                color: CardwireService.lastError.length > 0 ? Theme.error : Theme.surfaceText
+                color: root.showError ? Theme.error : Theme.surfaceText
                 font.pixelSize: Theme.fontSizeSmall
                 elide: Text.ElideRight
                 maximumLineCount: 1
@@ -70,15 +73,15 @@ PluginComponent {
             spacing: Theme.spacingXS
 
             DankIcon {
-                name: CardwireService.lastError.length > 0 ? "warning" : "memory"
-                color: CardwireService.lastError.length > 0 ? Theme.error : Theme.surfaceText
+                name: root.showError ? "warning" : "memory"
+                color: root.showError ? Theme.error : Theme.surfaceText
                 size: Theme.iconSize - 6
                 anchors.horizontalCenter: parent.horizontalCenter
             }
 
             StyledText {
                 text: root.barModeText()
-                color: CardwireService.lastError.length > 0 ? Theme.error : Theme.surfaceText
+                color: root.showError ? Theme.error : Theme.surfaceText
                 font.pixelSize: Theme.fontSizeSmall
                 elide: Text.ElideRight
                 maximumLineCount: 1
@@ -106,9 +109,9 @@ PluginComponent {
                 spacing: Theme.spacingM
 
                 DankIcon {
-                    name: CardwireService.lastError.length > 0 ? "warning" : "memory"
+                    name: root.showError ? "warning" : "memory"
                     size: Theme.iconSizeLarge
-                    color: CardwireService.lastError.length > 0 ? Theme.error : Theme.primary
+                    color: root.showError ? Theme.error : Theme.primary
                     anchors.verticalCenter: parent.verticalCenter
                 }
 
@@ -121,20 +124,20 @@ PluginComponent {
                         text: root.currentModeLabel()
                         font.pixelSize: Theme.fontSizeLarge
                         font.weight: Font.Bold
-                        color: CardwireService.lastError.length > 0 ? Theme.error : Theme.surfaceText
+                        color: root.showError ? Theme.error : Theme.surfaceText
                         elide: Text.ElideRight
                         maximumLineCount: 1
                         width: parent.width
                     }
 
                     StyledText {
-                        text: CardwireService.lastError
+                        text: CardwireService.startupLoading ? "Loading Cardwire…" : CardwireService.lastError
                         font.pixelSize: Theme.fontSizeSmall
-                        color: Theme.error
+                        color: root.showError ? Theme.error : Theme.surfaceTextMedium
                         elide: Text.ElideRight
                         maximumLineCount: 1
                         width: parent.width
-                        visible: CardwireService.lastError.length > 0
+                        visible: text.length > 0
                     }
 
                 }

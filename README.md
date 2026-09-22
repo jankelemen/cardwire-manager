@@ -16,13 +16,15 @@ cardwire set <mode>
 
 ## Features
 
-- Shows the active Cardwire mode in the bar.
+- Shows the active Cardwire mode in the bar, or `NM` while it is unknown.
 - Lists every mode reported by `cardwire get` in the popout.
 - Marks the active mode with a check indicator.
 - Switches modes from the popout.
 - Cycles to the next mode from the pill right-click action.
 - Polls Cardwire state every 15 seconds by default, using one shared timer across bars.
 - Exposes the polling interval as a settings slider. Polling can also be disabled.
+- Retries an unavailable mode at startup up to three times, waiting 2, 5, and 10 seconds after failed attempts, even with polling disabled.
+- Shows “Loading Cardwire…” in the popout while startup retries are pending, and the error if all attempts fail.
 
 ## Install
 

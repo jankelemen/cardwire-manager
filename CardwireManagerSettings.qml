@@ -108,9 +108,15 @@ PluginSettings {
             }
 
             StyledText {
-                text: CardwireService.lastError.length > 0 ? CardwireService.lastError : (CardwireService.activeModeName.length > 0 ? "Active: " + CardwireService.modeLabel(CardwireService.activeModeName) : "No active mode")
+                text: {
+                    if (CardwireService.startupLoading)
+                        return "Loading Cardwire…";
+                    if (CardwireService.lastError.length > 0)
+                        return CardwireService.lastError;
+                    return CardwireService.activeModeName.length > 0 ? "Active: " + CardwireService.modeLabel(CardwireService.activeModeName) : "No active mode";
+                }
                 font.pixelSize: Theme.fontSizeSmall
-                color: CardwireService.lastError.length > 0 ? Theme.error : Theme.surfaceTextMedium
+                color: !CardwireService.startupLoading && CardwireService.lastError.length > 0 ? Theme.error : Theme.surfaceTextMedium
                 width: parent.width
                 wrapMode: Text.WordWrap
             }

@@ -98,14 +98,12 @@ PluginComponent {
         PopoutComponent {
             id: popout
 
-            showCloseButton: false
             spacing: Theme.spacingM
             Component.onCompleted: CardwireService.refreshModeState()
 
             Row {
                 width: parent.width - Theme.spacingL * 2
                 anchors.horizontalCenter: parent.horizontalCenter
-                height: 44
                 spacing: Theme.spacingM
 
                 DankIcon {
@@ -142,33 +140,17 @@ PluginComponent {
 
                 }
 
-                Rectangle {
+                DankActionButton {
                     id: closeButton
 
-                    width: 32
-                    height: 32
-                    radius: 16
-                    color: closeArea.containsMouse ? Theme.errorHover : "transparent"
-                    anchors.top: parent.top
-
-                    DankIcon {
-                        anchors.centerIn: parent
-                        name: "close"
-                        size: Theme.iconSize - 4
-                        color: closeArea.containsMouse ? Theme.error : Theme.surfaceText
-                    }
-
-                    MouseArea {
-                        id: closeArea
-
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onPressed: {
+                    iconName: "close"
+                    buttonSize: Theme.iconSizeLarge
+                    tooltipText: "Close"
+                    anchors.verticalCenter: parent.verticalCenter
+                    onClicked: {
+                        if (popout.closePopout)
                             popout.closePopout();
-                        }
                     }
-
                 }
 
             }
